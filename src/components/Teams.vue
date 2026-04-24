@@ -192,7 +192,6 @@ export default {
       selectedGroupMembers,
       selectedGroupName,
     }
-    }
   }
 }
 </script>
