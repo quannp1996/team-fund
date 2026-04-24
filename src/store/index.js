@@ -60,8 +60,7 @@ export const useGroupStore = defineStore('group', {
         console.log('Loading groups for user:', userId)
         this.groups = []
         
-        // Cách đơn giản: Query groups theo ownerId hoặc members array
-        // Tạm thời load tất cả groups của owner
+        // Load groups mà user là owner
         const ownerQuery = query(
           collection(db, 'groups'),
           where('ownerId', '==', userId)
@@ -70,11 +69,32 @@ export const useGroupStore = defineStore('group', {
         const ownerSnapshot = await getDocs(ownerQuery)
         console.log('Found owned groups:', ownerSnapshot.size)
         
+        const groupIds = new Set()
+        
         for (const groupDoc of ownerSnapshot.docs) {
+          groupIds.add(groupDoc.id)
           this.groups.push({
             id: groupDoc.id,
             ...groupDoc.data()
           })
+        }
+        
+        // Load groups mà user là member (không phải owner)
+        // Query tất cả groups và check members subcollection
+        const allGroupsSnapshot = await getDocs(collection(db, 'groups'))
+        
+        for (const groupDoc of allGroupsSnapshot.docs) {
+          // Skip nếu đã load group này rồi (user là owner)
+          if (groupIds.has(groupDoc.id)) continue
+          
+          // Check xem user có phải member không
+          const memberDoc = await getDoc(doc(db, 'groups', groupDoc.id, 'members', userId))
+          if (memberDoc.exists()) {
+            this.groups.push({
+              id: groupDoc.id,
+              ...groupDoc.data()
+            })
+          }
         }
         
         console.log('Total loaded groups:', this.groups.length)

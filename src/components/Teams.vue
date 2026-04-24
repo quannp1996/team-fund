@@ -34,7 +34,9 @@
             <div class="group-icon">💰</div>
             <div class="group-info">
               <h4>{{ group.name }}</h4>
-              <p class="group-owner">{{ group.ownerId === currentUserId ? 'Owner' : 'Member' }}</p>
+              <span class="group-role-badge" :class="group.ownerId === currentUserId ? 'owner' : 'member'">
+                {{ group.ownerId === currentUserId ? '👑 Owner' : '👤 Member' }}
+              </span>
             </div>
           </div>
           <div class="group-card-actions">
@@ -472,14 +474,42 @@ export default {
 .group-info h4 {
   font-size: 1.25rem;
   color: #333;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
   font-weight: 600;
 }
 
-.group-owner {
-  color: #666;
-  font-size: 0.875rem;
-  font-weight: 500;
+.group-role-badge {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.group-role-badge.owner {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fbbf24;
+  transition: all 0.3s ease;
+}
+
+.group-card:hover .group-role-badge.owner {
+  border-color: #f59e0b;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.group-role-badge.member {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border: 1px solid #60a5fa;
+  transition: all 0.3s ease;
+}
+
+.group-card:hover .group-role-badge.member {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .group-card-actions {
