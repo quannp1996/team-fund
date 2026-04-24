@@ -6,6 +6,20 @@
       <p>Income & Expense Management</p>
     </div>
 
+    <!-- Members Card -->
+    <div class="card members-card">
+      <h3>👥 Members ({{ members.length }})</h3>
+      <div class="members-list">
+        <div v-for="member in members" :key="member.userId" class="member-item">
+          <div class="member-avatar">{{ getMemberInitial(member.userId) }}</div>
+          <div class="member-info">
+            <span class="member-name">{{ getMemberName(member.userId) }}</span>
+            <span class="member-role" :class="member.role">{{ member.role }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Summary Card -->
     <div class="summary-grid">
       <div class="summary-card income-card">
@@ -320,6 +334,15 @@ export default {
       return new Date(date).toLocaleDateString('vi-VN')
     }
 
+    const getMemberName = (userId) => {
+      if (userId === currentUserId.value) return 'You'
+      return userId.substring(0, 8) + '...' // Show first 8 chars of UID
+    }
+
+    const getMemberInitial = (userId) => {
+      return userId.charAt(0).toUpperCase()
+    }
+
     onMounted(async () => {
       if (auth.currentUser && groupId.value) {
         await transactionStore.loadTransactions(groupId.value)
@@ -344,6 +367,8 @@ export default {
       formatCurrency,
       formatMonth,
       formatDate,
+      getMemberName,
+      getMemberInitial,
       incomeSchema,
       expenseSchema,
     }
@@ -395,6 +420,81 @@ export default {
 .page-header p {
   color: #666;
   font-size: 1.1rem;
+}
+
+/* Members Card */
+.members-card {
+  margin-bottom: 2rem;
+}
+
+.members-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.member-item:hover {
+  background: #e9ecef;
+  transform: translateY(-2px);
+}
+
+.member-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.member-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.member-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-role {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.member-role.owner {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.member-role.member {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 /* Summary Grid */

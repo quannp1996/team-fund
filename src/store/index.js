@@ -12,7 +12,8 @@ import {
   doc,
   setDoc,
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  collectionGroup
 } from 'firebase/firestore'
 
 // Group Store
@@ -54,22 +55,30 @@ export const useGroupStore = defineStore('group', {
     
     async loadGroups(userId) {
       try {
+        console.log('Loading groups for user:', userId)
         this.groups = []
-        // Lấy tất cả groups
-        const groupsSnapshot = await getDocs(collection(db, 'groups'))
         
-        // Kiểm tra user có phải member của group không
-        for (const groupDoc of groupsSnapshot.docs) {
-          const memberDoc = await getDoc(doc(db, 'groups', groupDoc.id, 'members', userId))
-          if (memberDoc.exists()) {
-            this.groups.push({
-              id: groupDoc.id,
-              ...groupDoc.data()
-            })
-          }
+        // Cách đơn giản: Query groups theo ownerId hoặc members array
+        // Tạm thời load tất cả groups của owner
+        const ownerQuery = query(
+          collection(db, 'groups'),
+          where('ownerId', '==', userId)
+        )
+        
+        const ownerSnapshot = await getDocs(ownerQuery)
+        console.log('Found owned groups:', ownerSnapshot.size)
+        
+        for (const groupDoc of ownerSnapshot.docs) {
+          this.groups.push({
+            id: groupDoc.id,
+            ...groupDoc.data()
+          })
         }
+        
+        console.log('Total loaded groups:', this.groups.length)
       } catch (error) {
         console.error('Error loading groups:', error)
+        console.error('Error details:', error.code, error.message)
       }
     },
     

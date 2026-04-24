@@ -42,8 +42,14 @@
               :to="{ path: `/group/${group.id}`, query: { name: group.name } }" 
               class="btn btn-view"
             >
-              View Transactions →
+              📊 View Transactions
             </router-link>
+            <button 
+              @click="viewMembers(group.id)" 
+              class="btn btn-members"
+            >
+              👥 View Members
+            </button>
             <button 
               v-if="group.ownerId === currentUserId"
               @click="inviteMember(group.id)" 
@@ -58,6 +64,27 @@
         <div class="empty-icon">📭</div>
         <p>You haven't created or joined any groups yet.</p>
         <p class="empty-hint">Create your first group above!</p>
+      </div>
+    </div>
+
+    <!-- Members Modal -->
+    <div v-if="showMembersModal" class="modal-overlay" @click="closeMembersModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>👥 {{ selectedGroupName }} - Members</h3>
+          <button @click="closeMembersModal" class="btn-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="members-list">
+            <div v-for="member in selectedGroupMembers" :key="member.userId" class="member-item">
+              <div class="member-avatar">{{ getMemberInitial(member.userId) }}</div>
+              <div class="member-info">
+                <span class="member-name">{{ getMemberName(member.userId) }}</span>
+                <span class="member-role" :class="member.role">{{ member.role }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -81,18 +108,29 @@ export default {
     const groupStore = useGroupStore()
     const { groups } = storeToRefs(groupStore)
     const currentUserId = computed(() => auth.currentUser?.uid)
+    
+    const showMembersModal = ref(false)
+    const selectedGroupMembers = ref([])
+    const selectedGroupName = ref('')
 
     const schema = yup.object({
       groupName: yup.string().required('Group name is required').min(3, 'Group name must be at least 3 characters'),
     })
 
-    const createGroup = async (values) => {
+    const createGroup = async (values, { resetForm }) => {
       try {
         const newGroup = {
           name: values.groupName
         }
         await groupStore.createGroup(newGroup, auth.currentUser.uid)
-        values.groupName = '' // Clear input
+        
+        // Reload groups sau khi tạo xong
+        await groupStore.loadGroups(auth.currentUser.uid)
+        
+        // Clear form
+        resetForm()
+        
+        alert('✅ Group created successfully!')
       } catch (error) {
         console.error('Failed to create group:', error)
         alert('Failed to create group: ' + error.message)
@@ -100,11 +138,38 @@ export default {
     }
 
     const inviteMember = async (groupId) => {
-      const email = prompt('Enter the email of the user you want to invite:')
-      if (email) {
-        // TODO: Implement user lookup by email and add to group
-        alert('Feature coming soon! For now, share the group ID: ' + groupId)
+      const group = groups.value.find(g => g.id === groupId)
+      const inviteLink = `${window.location.origin}/team-fund/join/${groupId}`
+      
+      // Copy link to clipboard
+      try {
+        await navigator.clipboard.writeText(inviteLink)
+        alert(`✅ Invite link copied to clipboard!\n\nShare this link with your team:\n${inviteLink}\n\nOr send via email to invite members.`)
+      } catch (err) {
+        // Fallback nếu clipboard không hoạt động
+        prompt('Copy this invite link and share with your team:', inviteLink)
       }
+    }
+
+    const viewMembers = async (groupId) => {
+      const group = groups.value.find(g => g.id === groupId)
+      selectedGroupName.value = group.name
+      selectedGroupMembers.value = await groupStore.loadGroupMembers(groupId)
+      showMembersModal.value = true
+    }
+
+    const closeMembersModal = () => {
+      showMembersModal.value = false
+      selectedGroupMembers.value = []
+    }
+
+    const getMemberName = (userId) => {
+      if (userId === currentUserId.value) return 'You'
+      return userId.substring(0, 8) + '...'
+    }
+
+    const getMemberInitial = (userId) => {
+      return userId.charAt(0).toUpperCase()
     }
 
     onMounted(async () => {
@@ -117,8 +182,16 @@ export default {
       groups,
       createGroup,
       inviteMember,
+      viewMembers,
+      closeMembersModal,
+      getMemberName,
+      getMemberInitial,
       schema,
       currentUserId,
+      showMembersModal,
+      selectedGroupMembers,
+      selectedGroupName,
+    }
     }
   }
 }
@@ -310,6 +383,17 @@ export default {
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.5);
 }
 
+.btn-members {
+  background: white;
+  color: #10b981;
+  border: 2px solid #10b981;
+}
+
+.btn-members:hover {
+  background: #10b981;
+  color: white;
+}
+
 .btn-add-member {
   background: white;
   color: #667eea;
@@ -344,6 +428,156 @@ export default {
 .empty-hint {
   color: #999;
   font-size: 0.95rem;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalSlideUp 0.3s ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #999;
+  padding: 0.5rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.modal-body {
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.modal-body .members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-body .member-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.modal-body .member-item:hover {
+  background: #e9ecef;
+  transform: translateX(4px);
+}
+
+.modal-body .member-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.modal-body .member-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.modal-body .member-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-body .member-role {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.modal-body .member-role.owner {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.modal-body .member-role.member {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 /* Responsive */
