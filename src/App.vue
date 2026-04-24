@@ -4,6 +4,7 @@
       <header>
         <h1>Team Fund Manager</h1>
         <div class="user-info">
+          <Notifications />
           <span>{{ user.email }}</span>
           <button @click="signOut" class="btn btn-outline">Sign Out</button>
         </div>
@@ -33,9 +34,13 @@ import { ref, onMounted } from 'vue'
 import { auth } from './firebase/config'
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { useRouter } from 'vue-router'
+import Notifications from './components/Notifications.vue'
 
 export default {
   name: 'App',
+  components: {
+    Notifications,
+  },
   setup() {
     const user = ref(null)
     const router = useRouter()
@@ -335,7 +340,7 @@ header h1 {
 .user-info {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
 .user-info span {

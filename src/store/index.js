@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   collectionGroup
 } from 'firebase/firestore'
+import { auth } from '../firebase/config'
 
 // Group Store
 export const useGroupStore = defineStore('group', {
@@ -33,9 +34,10 @@ export const useGroupStore = defineStore('group', {
           createdAt: serverTimestamp()
         })
         
-        // Thêm owner vào members
+        // Thêm owner vào members với email
         await setDoc(doc(db, 'groups', groupRef.id, 'members', userId), {
           role: 'owner',
+          email: auth.currentUser?.email || '',
           joinedAt: serverTimestamp()
         })
         
@@ -97,11 +99,28 @@ export const useGroupStore = defineStore('group', {
         return []
       }
     },
+
+    async getGroupById(groupId) {
+      try {
+        const groupDoc = await getDoc(doc(db, 'groups', groupId))
+        if (groupDoc.exists()) {
+          return {
+            id: groupDoc.id,
+            ...groupDoc.data()
+          }
+        }
+        return null
+      } catch (error) {
+        console.error('Error getting group:', error)
+        return null
+      }
+    },
     
-    async addMember(groupId, userId, role = 'member') {
+    async addMember(groupId, userId, role = 'member', email = '') {
       try {
         await setDoc(doc(db, 'groups', groupId, 'members', userId), {
           role: role,
+          email: email,
           joinedAt: serverTimestamp()
         })
       } catch (error) {
@@ -221,6 +240,95 @@ export const useTransactionStore = defineStore('transaction', {
     // Số dư
     getBalance: (state) => {
       return state.transactions.reduce((sum, t) => sum + t.amount, 0)
+    },
+  },
+})
+
+// Invitation Store
+export const useInvitationStore = defineStore('invitation', {
+  state: () => ({
+    invitations: [],
+  }),
+  actions: {
+    async sendInvitation(groupId, groupName, inviterEmail, inviteeEmail) {
+      try {
+        // Kiểm tra xem user với email này có tồn tại không
+        // Tạo invitation
+        const invitationRef = await addDoc(collection(db, 'invitations'), {
+          groupId,
+          groupName,
+          inviterEmail,
+          inviteeEmail: inviteeEmail.toLowerCase().trim(),
+          status: 'pending',
+          createdAt: serverTimestamp()
+        })
+        
+        return invitationRef.id
+      } catch (error) {
+        console.error('Error sending invitation:', error)
+        throw error
+      }
+    },
+
+    async loadInvitations(userEmail) {
+      try {
+        const q = query(
+          collection(db, 'invitations'),
+          where('inviteeEmail', '==', userEmail.toLowerCase().trim()),
+          where('status', '==', 'pending'),
+          orderBy('createdAt', 'desc')
+        )
+        
+        const snapshot = await getDocs(q)
+        this.invitations = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        
+        return this.invitations
+      } catch (error) {
+        console.error('Error loading invitations:', error)
+        return []
+      }
+    },
+
+    async acceptInvitation(invitationId, groupId) {
+      try {
+        const groupStore = useGroupStore()
+        const userId = auth.currentUser.uid
+        const email = auth.currentUser.email
+        
+        // Thêm user vào group
+        await groupStore.addMember(groupId, userId, 'member', email)
+        
+        // Cập nhật status của invitation
+        await updateDoc(doc(db, 'invitations', invitationId), {
+          status: 'accepted'
+        })
+        
+        // Remove từ local state
+        this.invitations = this.invitations.filter(inv => inv.id !== invitationId)
+        
+        // Reload groups
+        await groupStore.loadGroups(userId)
+      } catch (error) {
+        console.error('Error accepting invitation:', error)
+        throw error
+      }
+    },
+
+    async rejectInvitation(invitationId) {
+      try {
+        await updateDoc(doc(db, 'invitations', invitationId), {
+          status: 'rejected'
+        })
+        
+        // Remove từ local state
+        this.invitations = this.invitations.filter(inv => inv.id !== invitationId)
+      } catch (error) {
+        console.error('Error rejecting invitation:', error)
+        throw error
+      }
     },
   },
 })

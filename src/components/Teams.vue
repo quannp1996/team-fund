@@ -87,13 +87,69 @@
         </div>
       </div>
     </div>
+
+    <!-- Invite Modal -->
+    <div v-if="showInviteModal" class="modal-overlay" @click="closeInviteModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>📨 Invite Member to {{ selectedGroupName }}</h3>
+          <button @click="closeInviteModal" class="btn-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- Invite by Email -->
+          <div class="invite-section">
+            <h4>🔍 Invite by Email</h4>
+            <p class="section-description">Send invitation to a specific email address</p>
+            <Form @submit="sendEmailInvitation" v-slot="{ errors }">
+              <div class="form-group">
+                <Field name="inviteeEmail" v-slot="{ field }">
+                  <input 
+                    v-bind="field" 
+                    type="email"
+                    placeholder="Enter email address (e.g., friend@gmail.com)"
+                    class="input-field"
+                    :class="{ 'input-error': errors.inviteeEmail }"
+                  >
+                </Field>
+                <span v-if="errors.inviteeEmail" class="error">{{ errors.inviteeEmail }}</span>
+              </div>
+              <button type="submit" class="btn btn-send-invite">
+                📧 Send Invitation
+              </button>
+            </Form>
+          </div>
+
+          <div class="divider">
+            <span>OR</span>
+          </div>
+
+          <!-- Invite by Link -->
+          <div class="invite-section">
+            <h4>🔗 Invite by Link</h4>
+            <p class="section-description">Copy and share this link with your team</p>
+            <div class="invite-link-box">
+              <input 
+                type="text" 
+                :value="inviteLink" 
+                readonly 
+                class="invite-link-input"
+                ref="inviteLinkInput"
+              >
+              <button @click="copyInviteLink" class="btn btn-copy">
+                {{ linkCopied ? '✓ Copied' : '📋 Copy' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import { ref, onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useGroupStore } from '../store'
+import { useGroupStore, useInvitationStore } from '../store'
 import { Form, Field } from 'vee-validate'
 import * as yup from 'yup'
 import { auth } from '../firebase/config'
@@ -106,15 +162,26 @@ export default {
   },
   setup() {
     const groupStore = useGroupStore()
+    const invitationStore = useInvitationStore()
     const { groups } = storeToRefs(groupStore)
     const currentUserId = computed(() => auth.currentUser?.uid)
     
     const showMembersModal = ref(false)
     const selectedGroupMembers = ref([])
     const selectedGroupName = ref('')
+    
+    const showInviteModal = ref(false)
+    const selectedGroupId = ref('')
+    const inviteLink = ref('')
+    const linkCopied = ref(false)
+    const inviteLinkInput = ref(null)
 
     const schema = yup.object({
       groupName: yup.string().required('Group name is required').min(3, 'Group name must be at least 3 characters'),
+    })
+
+    const inviteSchema = yup.object({
+      inviteeEmail: yup.string().required('Email is required').email('Invalid email format'),
     })
 
     const createGroup = async (values, { resetForm }) => {
@@ -139,15 +206,52 @@ export default {
 
     const inviteMember = async (groupId) => {
       const group = groups.value.find(g => g.id === groupId)
-      const inviteLink = `${window.location.origin}/team-fund/join/${groupId}`
-      
-      // Copy link to clipboard
+      selectedGroupId.value = groupId
+      selectedGroupName.value = group.name
+      inviteLink.value = `${window.location.origin}/team-fund/join/${groupId}`
+      linkCopied.value = false
+      showInviteModal.value = true
+    }
+
+    const closeInviteModal = () => {
+      showInviteModal.value = false
+      selectedGroupId.value = ''
+      linkCopied.value = false
+    }
+
+    const copyInviteLink = async () => {
       try {
-        await navigator.clipboard.writeText(inviteLink)
-        alert(`✅ Invite link copied to clipboard!\n\nShare this link with your team:\n${inviteLink}\n\nOr send via email to invite members.`)
+        await navigator.clipboard.writeText(inviteLink.value)
+        linkCopied.value = true
+        setTimeout(() => {
+          linkCopied.value = false
+        }, 3000)
       } catch (err) {
-        // Fallback nếu clipboard không hoạt động
-        prompt('Copy this invite link and share with your team:', inviteLink)
+        // Fallback
+        if (inviteLinkInput.value) {
+          inviteLinkInput.value.select()
+          document.execCommand('copy')
+          linkCopied.value = true
+        }
+      }
+    }
+
+    const sendEmailInvitation = async (values, { resetForm }) => {
+      try {
+        const group = groups.value.find(g => g.id === selectedGroupId.value)
+        await invitationStore.sendInvitation(
+          selectedGroupId.value,
+          group.name,
+          auth.currentUser.email,
+          values.inviteeEmail
+        )
+        
+        alert(`✅ Invitation sent to ${values.inviteeEmail}!\n\nThey will receive a notification when they sign in.`)
+        resetForm()
+        closeInviteModal()
+      } catch (error) {
+        console.error('Failed to send invitation:', error)
+        alert('Failed to send invitation: ' + error.message)
       }
     }
 
@@ -165,10 +269,16 @@ export default {
 
     const getMemberName = (userId) => {
       if (userId === currentUserId.value) return 'You'
-      return userId.substring(0, 8) + '...'
+      const member = selectedGroupMembers.value.find(m => m.userId === userId)
+      return member?.email || userId.substring(0, 8) + '...'
     }
 
     const getMemberInitial = (userId) => {
+      if (userId === currentUserId.value) return 'Y'
+      const member = selectedGroupMembers.value.find(m => m.userId === userId)
+      if (member?.email) {
+        return member.email.charAt(0).toUpperCase()
+      }
       return userId.charAt(0).toUpperCase()
     }
 
@@ -184,13 +294,22 @@ export default {
       inviteMember,
       viewMembers,
       closeMembersModal,
+      closeInviteModal,
+      copyInviteLink,
+      sendEmailInvitation,
       getMemberName,
       getMemberInitial,
       schema,
+      inviteSchema,
       currentUserId,
       showMembersModal,
       selectedGroupMembers,
       selectedGroupName,
+      showInviteModal,
+      selectedGroupId,
+      inviteLink,
+      linkCopied,
+      inviteLinkInput,
     }
   }
 }
@@ -579,6 +698,104 @@ export default {
   color: #1e40af;
 }
 
+/* Invite Modal */
+.invite-section {
+  padding: 1.5rem;
+  background: #f9fafb;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.invite-section:last-child {
+  margin-bottom: 0;
+}
+
+.invite-section h4 {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.section-description {
+  margin: 0 0 1rem 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.invite-link-box {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.invite-link-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: white;
+  font-family: monospace;
+}
+
+.btn-copy {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.btn-copy:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-send-invite {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-send-invite:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+}
+
+.divider {
+  text-align: center;
+  position: relative;
+  margin: 1.5rem 0;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e0e0e0;
+}
+
+.divider span {
+  position: relative;
+  background: white;
+  padding: 0 1rem;
+  color: #999;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .groups-grid {
@@ -587,6 +804,14 @@ export default {
   
   .page-header h2 {
     font-size: 2rem;
+  }
+
+  .invite-link-box {
+    flex-direction: column;
+  }
+
+  .btn-copy {
+    width: 100%;
   }
 }
 </style>

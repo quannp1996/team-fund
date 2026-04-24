@@ -47,8 +47,17 @@
       </div>
     </div>
 
-    <!-- Add Transaction Forms -->
-    <div class="forms-grid">
+    <!-- Notice for non-owner members -->
+    <div v-if="!isOwner" class="notice-card">
+      <div class="notice-icon">ℹ️</div>
+      <div class="notice-content">
+        <h3>View Only Mode</h3>
+        <p>Only the group owner can add or modify transactions.</p>
+      </div>
+    </div>
+
+    <!-- Add Transaction Forms (Owner Only) -->
+    <div v-if="isOwner" class="forms-grid">
       <!-- Add Income -->
       <div class="card income-form-card">
         <h3>💵 Add Income</h3>
@@ -192,7 +201,7 @@
             <span :class="['amount', transaction.type]">
               {{ transaction.type === 'income' ? '+' : '-' }}{{ formatCurrency(Math.abs(transaction.amount)) }}
             </span>
-            <button @click="deleteTransaction(transaction.id)" class="btn-delete">🗑️</button>
+            <button v-if="isOwner" @click="deleteTransaction(transaction.id)" class="btn-delete">🗑️</button>
           </div>
         </div>
       </div>
@@ -229,6 +238,8 @@ export default {
     const currentUserId = computed(() => auth.currentUser?.uid)
     const members = ref([])
     const selectedMonth = ref('')
+    const currentGroup = ref(null)
+    const isOwner = computed(() => currentGroup.value?.ownerId === currentUserId.value)
 
     // Get current month as default
     const getCurrentMonth = () => {
@@ -336,15 +347,22 @@ export default {
 
     const getMemberName = (userId) => {
       if (userId === currentUserId.value) return 'You'
-      return userId.substring(0, 8) + '...' // Show first 8 chars of UID
+      const member = members.value.find(m => m.userId === userId)
+      return member?.email || userId.substring(0, 8) + '...'
     }
 
     const getMemberInitial = (userId) => {
+      if (userId === currentUserId.value) return 'Y'
+      const member = members.value.find(m => m.userId === userId)
+      if (member?.email) {
+        return member.email.charAt(0).toUpperCase()
+      }
       return userId.charAt(0).toUpperCase()
     }
 
     onMounted(async () => {
       if (auth.currentUser && groupId.value) {
+        currentGroup.value = await groupStore.getGroupById(groupId.value)
         await transactionStore.loadTransactions(groupId.value)
         members.value = await groupStore.loadGroupMembers(groupId.value)
       }
@@ -361,6 +379,7 @@ export default {
       totalExpense,
       balance,
       availableMonths,
+      isOwner,
       addIncome,
       addExpense,
       deleteTransaction,
@@ -783,4 +802,34 @@ export default {
     flex-wrap: wrap;
   }
 }
+
+/* Notice Card */
+.notice-card {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid #f59e0b;
+}
+
+.notice-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.notice-content h3 {
+  margin: 0 0 0.5rem 0;
+  color: #92400e;
+  font-size: 1.1rem;
+}
+
+.notice-content p {
+  margin: 0;
+  color: #78350f;
+  font-size: 0.95rem;
+}
 </style>
+

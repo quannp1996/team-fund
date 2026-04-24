@@ -107,7 +107,12 @@ export default {
     const joinGroup = async () => {
       try {
         joining.value = true
-        await groupStore.addMember(groupId.value, user.value.uid, 'member')
+        await groupStore.addMember(
+          groupId.value, 
+          user.value.uid, 
+          'member',
+          user.value.email
+        )
         
         // Redirect to group page
         router.push(`/group/${groupId.value}?name=${groupName.value}`)

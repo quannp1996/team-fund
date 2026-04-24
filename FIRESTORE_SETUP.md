@@ -63,21 +63,39 @@ service cloud.firestore {
         allow read: if request.auth != null && 
                        exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
         
-        // Cho phép tạo transaction nếu user là member
+        // Chỉ cho phép owner tạo transaction
         allow create: if request.auth != null && 
-                         exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)) &&
+                         request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId &&
                          request.auth.uid == request.resource.data.createdBy;
         
-        // Cho phép update nếu user là người tạo transaction
+        // Chỉ cho phép owner update transaction
         allow update: if request.auth != null && 
-                         request.auth.uid == resource.data.createdBy;
+                         request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId;
         
-        // Cho phép xóa nếu user là người tạo hoặc là owner của group
-        allow delete: if request.auth != null && (
-          request.auth.uid == resource.data.createdBy ||
-          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId
-        );
+        // Chỉ cho phép owner xóa transaction
+        allow delete: if request.auth != null &&
+          request.auth.uid == get(/databases/$(database)/documents/groups/$(groupId)).data.ownerId;
       }
+    }
+
+    // Invitations collection
+    match /invitations/{invitationId} {
+      // Cho phép đọc nếu user là người được mời (inviteeEmail khớp)
+      allow read: if request.auth != null && 
+                     request.auth.token.email.lower() == resource.data.inviteeEmail;
+      
+      // Cho phép tạo invitation nếu đã đăng nhập
+      allow create: if request.auth != null;
+      
+      // Cho phép update để accept/reject invitation nếu là người được mời
+      allow update: if request.auth != null && 
+                       request.auth.token.email.lower() == resource.data.inviteeEmail;
+      
+      // Cho phép xóa nếu là người gửi hoặc người nhận
+      allow delete: if request.auth != null && (
+        request.auth.token.email == resource.data.inviterEmail ||
+        request.auth.token.email.lower() == resource.data.inviteeEmail
+      );
     }
   }
 }
@@ -105,9 +123,15 @@ Reload app và thử tạo group mới. Lỗi sẽ biến mất! ✨
 
 ### Transactions (subcollection)
 - **Read**: Chỉ members của group mới có thể xem transactions
-- **Create**: Members có thể tạo transaction (phải là người tạo)
-- **Update**: Chỉ người tạo transaction mới có thể sửa
-- **Delete**: Người tạo hoặc owner của group có thể xóa
+- **Create**: Chỉ owner của group mới có thể tạo transaction
+- **Update**: Chỉ owner của group mới có thể sửa transaction
+- **Delete**: Chỉ owner của group mới có thể xóa transaction
+
+### Invitations
+- **Read**: Chỉ người được mời (inviteeEmail) mới có thể đọc invitation
+- **Create**: Bất kỳ user đã đăng nhập nào cũng có thể tạo invitation
+- **Update**: Chỉ người được mời mới có thể update (accept/reject)
+- **Delete**: Người gửi hoặc người nhận có thể xóa invitation
 
 ---
 
